@@ -66,7 +66,9 @@ class Bot(discord.Client):
 
 
 bot = Bot()
-
+@bot.event
+async def on_ready():
+    print("GİRİŞ YAPILDI:", bot.user, bot.user.id)
 
 async def roblox_id_al(session, kullanici_adi):
     async with session.post(
