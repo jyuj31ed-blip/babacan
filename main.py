@@ -1,4 +1,5 @@
 import os
+import traceback
 import discord
 from discord import app_commands
 import aiohttp
@@ -36,9 +37,11 @@ RUTBELER = {
     24: "Tümg.",
     25: "Korg.",
     26: "Org.",
-    27: "Gnl. Krm. Bşk."
+    27: "Gnl. Krm. Bşk.",
 }
 # ---------------------------------------------------------------------
+
+TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 intents = discord.Intents.default()
 
@@ -70,6 +73,7 @@ async def roblox_id_al(session, kullanici_adi):
         "https://users.roblox.com/v1/usernames/users",
         json={"usernames": [kullanici_adi], "excludeBannedUsers": True},
     ) as r:
+        print("Roblox kullanıcı API durum:", r.status)
         if r.status != 200:
             return None, None
         veri = await r.json()
@@ -82,6 +86,7 @@ async def grup_rank_al(session, user_id):
     async with session.get(
         f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
     ) as r:
+        print("Roblox grup API durum:", r.status)
         if r.status != 200:
             return None
         veri = await r.json()
@@ -102,35 +107,39 @@ async def yenilerutbe(interaction: discord.Interaction, oyuncu_adi: str):
 
     await interaction.response.defer(ephemeral=True)
 
-    async with aiohttp.ClientSession() as session:
-        user_id, gercek_ad = await roblox_id_al(session, oyuncu_adi)
-        if not user_id:
-            await interaction.followup.send("Bu Roblox kullanıcısı bulunamadı.")
-            return
-
-        rank = await grup_rank_al(session, user_id)
-        if rank is None:
-            await interaction.followup.send("Roblox'a ulaşılamadı, biraz sonra tekrar dene.")
-            return
-
-    if rank == 0:
-        await interaction.followup.send("Bu kullanıcı grupta değil.")
-        return
-
-    prefix = RUTBELER.get(rank)
-    if not prefix:
-        await interaction.followup.send(f"Rütben ({rank}) için tanımlı bir ünvan yok.")
-        return
-
-    yeni_isim = f"{prefix} | {gercek_ad}"[:32]  # Discord limiti 32 karakter
-
     try:
+        async with aiohttp.ClientSession(timeout=TIMEOUT) as session:
+            user_id, gercek_ad = await roblox_id_al(session, oyuncu_adi)
+            if not user_id:
+                await interaction.followup.send("Bu Roblox kullanıcısı bulunamadı.")
+                return
+
+            rank = await grup_rank_al(session, user_id)
+            if rank is None:
+                await interaction.followup.send("Roblox'a ulaşılamadı, biraz sonra tekrar dene.")
+                return
+
+        if rank == 0:
+            await interaction.followup.send("Bu kullanıcı grupta değil.")
+            return
+
+        prefix = RUTBELER.get(rank)
+        if not prefix:
+            await interaction.followup.send(f"Rütben ({rank}) için tanımlı bir ünvan yok.")
+            return
+
+        yeni_isim = f"{prefix} | {gercek_ad}"[:32]  # Discord limiti 32 karakter
+
         await interaction.user.edit(nick=yeni_isim)
         await interaction.followup.send(f"İsmin **{yeni_isim}** olarak güncellendi.")
+
     except discord.Forbidden:
         await interaction.followup.send(
             "İsmini değiştiremedim. (Botun rolü senin rolünün üstünde olmalı; sunucu sahibinin ismi de değiştirilemez.)"
         )
+    except Exception:
+        traceback.print_exc()
+        await interaction.followup.send("Bir hata oluştu, biraz sonra tekrar dene.")
 
 
 bot.run(TOKEN)
